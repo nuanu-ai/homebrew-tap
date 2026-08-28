@@ -5,7 +5,6 @@ class Apn < Formula
   desc "Local-first payment runtime for AI agents"
   homepage "https://github.com/nuanu-ai/agent-payment-node"
   url "https://github.com/nuanu-ai/agent-payment-node/releases/download/v0.2.0/nuanu-ai-apn-0.2.0.tgz"
-  version "0.2.0"
   sha256 "74a8e4e9d298a73cb0892f695fffb2cacd53f96e861bebf77a355a4d8c3a9b11"
   license "MIT"
 
