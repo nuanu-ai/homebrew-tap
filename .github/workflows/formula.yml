@@ -1,0 +1,45 @@
+name: Formula
+
+# Installs and tests the apn formula from this checkout on a GitHub macOS runner, so a
+# formula change is verified without building anything on a developer machine.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-test:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Check out the tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install and test apn from this checkout
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          set -euo pipefail
+          git switch -c formula-ci
+          brew tap nuanu-ai/tap "$GITHUB_WORKSPACE"
+          brew install --formula nuanu-ai/tap/apn
+          brew test nuanu-ai/tap/apn
+          apn="$(brew --prefix)/bin/apn"
+          "$apn" --version
+
+      # An older node first on PATH must not decide which node runs apn.
+      - name: apn ignores an older node first on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          fake="$RUNNER_TEMP/old-node"
+          mkdir "$fake"
+          printf '#!/bin/sh\necho "fake old node" >&2\nexit 42\n' > "$fake/node"
+          chmod +x "$fake/node"
+          PATH="$fake:$PATH" "$(brew --prefix)/bin/apn" --version

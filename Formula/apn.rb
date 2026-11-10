@@ -16,7 +16,8 @@ class Apn < Formula
     # A global npm install does not apply the package's nested shrinkwrap.
     system formula_opt_bin("node@24")/"npm", "ci", *std_npm_args(prefix: false, ignore_scripts: true), "--omit=dev"
     libexec.install Dir["*"]
-    bin.install_symlink libexec/"bin/apn.js" => "apn"
+    # Run apn, and every node it starts, on node@24 rather than whichever node is first on PATH.
+    (bin/"apn").write_env_script libexec/"bin/apn.js", PATH: "#{formula_opt_bin("node@24")}:$PATH"
   end
 
   test do
