@@ -1,7 +1,9 @@
 name: Formula
 
-# Installs and tests the apn formula from this checkout on a GitHub macOS runner, so a
-# formula change is verified without building anything on a developer machine.
+# Installs and tests the apn formula from this checkout on a fresh GitHub macOS arm64 runner with the standard
+# /opt/homebrew prefix, so a formula change is verified without building anything on a developer machine. It also
+# proves that installing, testing and running `apn --version` leave no APN state (`~/.apn` of the real user, the
+# directory apn resolves from os.userInfo().homedir), and keeps the evidence as an artifact.
 
 on:
   pull_request:
@@ -14,16 +16,46 @@ jobs:
   install-and-test:
     runs-on: macos-15
     timeout-minutes: 40
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
       - name: Check out the tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # A fresh supported host: Apple silicon, the standard Homebrew prefix, no apn, no tap, no APN state.
+      - name: Fresh host before install
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE="$RUNNER_TEMP/apn-formula-evidence.txt"
+          echo "EVIDENCE=$EVIDENCE" >> "$GITHUB_ENV"
+          home="$(python3 -I -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)')"
+          echo "APN_CI_USER_HOME=$home" >> "$GITHUB_ENV"
+          {
+            echo "event: ${{ github.event_name }}"
+            echo "tap checkout sha: $(git rev-parse HEAD)"
+            echo "tap pull request head sha: ${{ github.event.pull_request.head.sha || 'none' }}"
+            echo "formula file sha256: $(shasum -a 256 Formula/apn.rb | cut -d ' ' -f 1)"
+            echo "formula url: $(sed -n 's/^  url "\(.*\)"$/\1/p' Formula/apn.rb)"
+            echo "formula tarball sha256: $(sed -n 's/^  sha256 "\(.*\)"$/\1/p' Formula/apn.rb)"
+            echo "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
+            echo "uname -m: $(uname -m)"
+            echo "brew --prefix: $(brew --prefix)"
+            echo "brew --version: $(brew --version | head -n 1)"
+            echo "user home (pwd): $home"
+          } | tee "$EVIDENCE"
+          test "$(uname -m)" = arm64 || { echo "not arm64" | tee -a "$EVIDENCE"; exit 1; }
+          test "$(brew --prefix)" = /opt/homebrew || { echo "not the standard Homebrew prefix" | tee -a "$EVIDENCE"; exit 1; }
+          if command -v apn >/dev/null 2>&1; then echo "before install: apn already on PATH at $(command -v apn)" | tee -a "$EVIDENCE"; exit 1; fi
+          if brew list --formula apn >/dev/null 2>&1; then echo "before install: an apn formula is installed" | tee -a "$EVIDENCE"; exit 1; fi
+          if brew tap | grep -qx 'nuanu-ai/tap'; then echo "before install: nuanu-ai/tap is already tapped" | tee -a "$EVIDENCE"; exit 1; fi
+          if [ -e "$home/.apn" ] || [ -L "$home/.apn" ]; then echo "before install: $home/.apn exists" | tee -a "$EVIDENCE"; exit 1; fi
+          echo "before install: no apn on PATH, no apn formula, no nuanu-ai/tap, no $home/.apn" | tee -a "$EVIDENCE"
+
       - name: Install and test apn from this checkout
         shell: bash
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
           set -euo pipefail
           git switch -c formula-ci
@@ -31,7 +63,12 @@ jobs:
           brew install --formula nuanu-ai/tap/apn
           brew test nuanu-ai/tap/apn
           apn="$(brew --prefix)/bin/apn"
-          "$apn" --version
+          version="$("$apn" --version)"
+          echo "$version"
+          {
+            echo "installed: $(brew list --versions apn)"
+            echo "apn --version: $version"
+          } | tee -a "$EVIDENCE"
 
       # An older node first on PATH must not decide which node runs apn.
       - name: apn ignores an older node first on PATH
@@ -43,3 +80,22 @@ jobs:
           printf '#!/bin/sh\necho "fake old node" >&2\nexit 42\n' > "$fake/node"
           chmod +x "$fake/node"
           PATH="$fake:$PATH" "$(brew --prefix)/bin/apn" --version
+
+      - name: No APN state after install, test and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          home="$APN_CI_USER_HOME"
+          if [ -e "$home/.apn" ] || [ -L "$home/.apn" ]; then
+            { echo "after install: $home/.apn was created"; ls -la "$home/.apn"; } | tee -a "$EVIDENCE"
+            exit 1
+          fi
+          echo "after install, brew test and apn --version: no $home/.apn" | tee -a "$EVIDENCE"
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apn-formula-evidence
+          path: ${{ runner.temp }}/apn-formula-evidence.txt
+          if-no-files-found: error
