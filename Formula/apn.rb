@@ -4,8 +4,8 @@
 class Apn < Formula
   desc "Local-first payment runtime for AI agents"
   homepage "https://github.com/nuanu-ai/agent-payment-node"
-  url "https://github.com/nuanu-ai/agent-payment-node/releases/download/v0.5.110/nuanu-ai-apn-0.5.110.tgz"
-  sha256 "afb0db4eb0b186b20b179f345c18fe456bbc7c9b8e699faac359dce3c617a93b"
+  url "https://github.com/nuanu-ai/agent-payment-node/releases/download/v0.5.111/nuanu-ai-apn-0.5.111.tgz"
+  sha256 "7acd39c5a1c81d85597f2b3cd03f9af83f9b07b9481ec405f6d6d2e652781d65"
   license "MIT"
 
   depends_on arch: :arm64
@@ -21,6 +21,6 @@ class Apn < Formula
   end
 
   test do
-    assert_match '"product_version":"0.5.110"', shell_output("#{bin}/apn --version")
+    assert_match '"product_version":"0.5.111"', shell_output("#{bin}/apn --version")
   end
 end
